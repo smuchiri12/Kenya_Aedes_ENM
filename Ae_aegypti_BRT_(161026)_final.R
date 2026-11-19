@@ -697,258 +697,259 @@ for (species_name in species_to_run) {
     ri_results <- read.csv(ri_path)
   }
   
-  # # ---- Response Curves (raw covariates) ----
-  # rc_path <- paste0(out_base, "/", species_name, "/response_curves/response_curves.pdf")
-  # if (savingPlots && !file.exists(rc_path) && length(valid_models) > 0) {
-  #   
-  #   cat("\n── Response curves (all", length(valid_models), "models) ──\n")
-  #   cat("  Computing covariate ranges across all 100 dataframes...\n")
-  #   
-  #   env_vals <- lapply(cov_cols, function(cov) {
-  #     vals <- unlist(lapply(train_sets, function(df) {
-  #       if (cov %in% names(df)) df[[cov]] else NULL
-  #     }))
-  #     vals <- vals[!is.na(vals) & is.finite(vals)]
-  #     if (length(vals) == 0) {
-  #       c(min = NA_real_, max = NA_real_, med = NA_real_)
-  #     } else {
-  #       c(min = min(vals, na.rm = TRUE),
-  #         max = max(vals, na.rm = TRUE),
-  #         med = median(vals, na.rm = TRUE))
-  #     }
-  #   })
-  #   names(env_vals) <- cov_cols
-  #   
-  #   valid_covs <- cov_cols[sapply(cov_cols, function(cov) {
-  #     !is.na(env_vals[[cov]]["min"]) && !is.na(env_vals[[cov]]["max"]) &&
-  #       is.finite(env_vals[[cov]]["min"]) && is.finite(env_vals[[cov]]["max"]) &&
-  #       env_vals[[cov]]["min"] < env_vals[[cov]]["max"]
-  #   })]
-  #   
-  #   if (length(valid_covs) == 0) {
-  #     cat("  No valid covariates for response curves. Skipping.\n")
-  #   } else {
-  #     cat("  Using", length(valid_covs), "covariates\n")
-  #     
-  #     ri_list <- lapply(valid_models, function(model) {
-  #       tryCatch({
-  #         ri <- summary(model, plotit = FALSE)
-  #         setNames(ri$rel.inf, ri$var)
-  #       }, error = function(e) NULL)
-  #     })
-  #     ri_list <- Filter(Negate(is.null), ri_list)
-  #     
-  #     ri_mean <- sapply(valid_covs, function(cov) {
-  #       vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
-  #       round(mean(vals, na.rm = TRUE), 1)
-  #     })
-  #     ri_min <- sapply(valid_covs, function(cov) {
-  #       vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
-  #       round(min(vals, na.rm = TRUE), 1)
-  #     })
-  #     ri_max <- sapply(valid_covs, function(cov) {
-  #       vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
-  #       round(max(vals, na.rm = TRUE), 1)
-  #     })
-  #     
-  #     minY <- 1; maxY <- 0
-  #     for (cov in valid_covs) {
-  #       val_range <- seq(env_vals[[cov]]["min"], env_vals[[cov]]["max"], length.out = 100)
-  #       df_rc <- as.data.frame(matrix(rep(env_vals[[cov]]["med"], 100),
-  #                                     nrow = 100, ncol = length(cov_cols), byrow = TRUE))
-  #       colnames(df_rc) <- cov_cols
-  #       df_rc[, cov] <- val_range
-  #       for (model in valid_models) {
-  #         tryCatch({
-  #           proj <- predict.gbm(model, df_rc, model$gbm.call$best.trees, type = "response")
-  #           if (min(proj, na.rm = TRUE) < minY) minY <- min(proj, na.rm = TRUE)
-  #           if (max(proj, na.rm = TRUE) > maxY) maxY <- max(proj, na.rm = TRUE)
-  #         }, error = function(e) {})
-  #       }
-  #     }
-  #     y_top <- maxY + ((maxY - minY) / 3)
-  #     cat("  Y-axis range:", round(minY, 3), "to", round(maxY, 3), "\n")
-  #     
-  #     col_lines <- rgb(222, 67, 39, 30, maxColorValue = 255)
-  #     col_mean  <- rgb(180, 40, 20, 255, maxColorValue = 255)
-  #     col_range <- rgb(222, 67, 39, 40, maxColorValue = 255)
-  #     
-  #     n_cols <- 5
-  #     n_rows <- ceiling(length(valid_covs) / n_cols)
-  #     
-  #     pdf(rc_path, width = n_cols * 1.5, height = n_rows * 1.5)
-  #     par(mfrow = c(n_rows, n_cols), oma = c(0.5, 1.2, 0.8, 0.3),
-  #         mar = c(2.0, 0.8, 0.3, 0.3), lwd = 0.2, col = "gray30")
-  #     
-  #     for (cov in valid_covs) {
-  #       val_range <- seq(env_vals[[cov]]["min"], env_vals[[cov]]["max"], length.out = 100)
-  #       df_rc <- as.data.frame(matrix(rep(env_vals[[cov]]["med"], 100),
-  #                                     nrow = 100, ncol = length(cov_cols), byrow = TRUE))
-  #       colnames(df_rc) <- cov_cols
-  #       df_rc[, cov] <- val_range
-  #       
-  #       all_preds <- matrix(NA, nrow = 100, ncol = length(valid_models))
-  #       for (j in seq_along(valid_models)) {
-  #         tryCatch({
-  #           all_preds[, j] <- predict.gbm(valid_models[[j]], df_rc,
-  #                                         valid_models[[j]]$gbm.call$best.trees,
-  #                                         type = "response")
-  #         }, error = function(e) {})
-  #       }
-  #       all_preds <- all_preds[, colSums(!is.na(all_preds)) == 100, drop = FALSE]
-  #       if (ncol(all_preds) == 0) {
-  #         plot.new(); title(xlab = cov); box(); next
-  #       }
-  #       pred_mean <- rowMeans(all_preds, na.rm = TRUE)
-  #       pred_min  <- apply(all_preds, 1, min, na.rm = TRUE)
-  #       pred_max  <- apply(all_preds, 1, max, na.rm = TRUE)
-  #       
-  #       plot(val_range, pred_mean, col = NA, ann = FALSE, axes = FALSE, type = "n",
-  #            xlim = c(env_vals[[cov]]["min"], env_vals[[cov]]["max"]),
-  #            ylim = c(minY, y_top))
-  #       polygon(c(val_range, rev(val_range)), c(pred_min, rev(pred_max)),
-  #               col = col_range, border = NA)
-  #       for (j in 1:ncol(all_preds)) lines(val_range, all_preds[, j], col = col_lines, lwd = 0.1)
-  #       lines(val_range, pred_mean, col = col_mean, lwd = 1.5)
-  #       
-  #       axis(side = 1, lwd.tick = 0.2, cex.axis = 0.6, lwd = 0,
-  #            tck = -0.04, col.axis = "gray30", mgp = c(0, 0.12, 0))
-  #       axis(side = 2, lwd.tick = 0.2, cex.axis = 0.6, lwd = 0,
-  #            tck = -0.04, col.axis = "gray30", mgp = c(0, 0.25, 0),
-  #            at = seq(0, 1, 0.2))
-  #       title(xlab = cov, cex.lab = 0.7, mgp = c(1.0, 0, 0), col.lab = "gray30")
-  #       ri_val <- paste0(ri_mean[cov],"% [", ri_min[cov], "-", ri_max[cov], "]")
-  #       mtext(paste0("RI = ", ri_val), side = 3, line = -1.2, cex = 0.45, col = "gray30")
-  #       box(lwd = 0.3, col = "gray30")
-  #     }
-  #     dev.off()
-  #     cat("  ✓ Response curves saved\n")
-  #   }
-  # }
-  # 
-  # # ---- Annual Predictions (raw rasters) ----
-  # cat("\nGenerating annual predictions (raw covariates)...\n")
-  # n_pred <- min(n_models_for_predictions, length(valid_models))
-  # pred_models <- valid_models[1:n_pred]
-  # 
-  # static_rasters <- list()
-  # for (cov in sp_covs$static) {
-  #   path <- paste0("covariates/static/", cov, ".tif")
-  #   if (file.exists(path)) {
-  #     r <- raster(path)
-  #     r <- resample(r, template_raster, method = "bilinear")
-  #     static_rasters[[cov]] <- r
-  #   } else {
-  #     cat("Warning: static raster missing:", path, "\n")
-  #   }
-  # }
-  # 
-  # for (year in years) {
-  #   mean_path <- paste0(out_base, "/", species_name, "/predictions/mean/",
-  #                       species_name, "_", year, "_mean.tif")
-  #   if (file.exists(mean_path)) next
-  #   cat("  Year", year, "\n")
-  #   
-  #   tv_rasters <- list()
-  #   for (cov in sp_covs$time_varying) {
-  #     path <- paste0(annual_output_base, "/", year, "/", cov, "_", year, ".tif")
-  #     if (file.exists(path)) {
-  #       r <- raster(path)
-  #       r <- resample(r, template_raster, method = "bilinear")
-  #       tv_rasters[[cov]] <- r
-  #     } else {
-  #       cat("    Missing:", path, "\n")
-  #     }
-  #   }
-  #   if (length(tv_rasters) != length(sp_covs$time_varying)) {
-  #     cat("    Missing some time‑varying rasters\n")
-  #     next
-  #   }
-  #   
-  #   all_rasters <- c(static_rasters, tv_rasters)
-  #   stack_all <- stack(all_rasters)
-  #   names(stack_all) <- c(names(static_rasters), names(tv_rasters))
-  #   
-  #   df_full <- as.data.frame(stack_all)
-  #   valid_idx_cells <- which(complete.cases(df_full))
-  #   if (length(valid_idx_cells) == 0) { cat("    No valid cells\n"); next }
-  #   df_valid <- df_full[valid_idx_cells, , drop = FALSE]
-  #   
-  #   projections <- list()
-  #   for (j in 1:length(pred_models)) {
-  #     model <- pred_models[[j]]
-  #     model_vars <- model$gbm.call$gbm.x
-  #     avail <- intersect(model_vars, colnames(df_valid))
-  #     if (length(avail) == 0) next
-  #     pred <- tryCatch({
-  #       predict.gbm(model, df_valid[, avail, drop = FALSE],
-  #                   model$gbm.call$best.trees, type = "response")
-  #     }, error = function(e) NULL)
-  #     if (is.null(pred)) next
-  #     rast <- stack_all[[1]]
-  #     rast[] <- NA
-  #     rast[valid_idx_cells] <- pred
-  #     projections[[length(projections)+1]] <- rast
-  #   }
-  #   
-  #   # >>> CHANGED: save mean, SD, and 95% CI rasters
-  #   if (length(projections) > 0) {
-  #     proj_stack <- stack(projections)
-  #     mean_proj <- calc(proj_stack, fun = mean, na.rm = TRUE)
-  #     writeRaster(mean_proj, mean_path, format = "GTiff", overwrite = TRUE,
-  #                 options = "COMPRESS=LZW")
-  #     
-  #     if (length(projections) >= 2) {
-  #       # --- SD raster ---
-  #       sd_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
-  #                         species_name, "_", year, "_stdv.tif")
-  #       sd_proj <- calc(proj_stack, fun = sd, na.rm = TRUE)
-  #       writeRaster(sd_proj, sd_path, format = "GTiff", overwrite = TRUE,
-  #                   options = "COMPRESS=LZW")
-  #       
-  #       # --- 95% CI rasters (2.5th and 97.5th percentiles) ---
-  #       ci_low_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
-  #                             species_name, "_", year, "_ci_low.tif")
-  #       ci_high_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
-  #                              species_name, "_", year, "_ci_high.tif")
-  #       ci_low_proj  <- calc(proj_stack, fun = function(x) quantile(x, 0.025, na.rm = TRUE))
-  #       ci_high_proj <- calc(proj_stack, fun = function(x) quantile(x, 0.975, na.rm = TRUE))
-  #       writeRaster(ci_low_proj,  ci_low_path,  format = "GTiff", overwrite = TRUE,
-  #                   options = "COMPRESS=LZW")
-  #       writeRaster(ci_high_proj, ci_high_path, format = "GTiff", overwrite = TRUE,
-  #                   options = "COMPRESS=LZW")
-  #     }
-  #     cat("    ✓ Saved mean, SD, and 95% CI rasters (", length(projections), "models)\n")
-  #   }
-  # }
-  # 
-  # # ---- Maps ----
-  # if (savingPlots) {
-  #   cat("\nGenerating maps...\n")
-  #   kenya_sf <- st_read(kenya_shapefile_path, quiet = TRUE)
-  #   kenya_sf <- st_transform(kenya_sf, crs = 4326)
-  #   prob_cols <- colorRampPalette(c("#FFFFCC", "#FFEDA0", "#FED976", "#FEB24C",
-  #                                   "#FD8D3C", "#FC4E2A", "#E31A1C", "#B10026"))(100)
-  #   for (year in map_years) {
-  #     mean_path <- paste0(out_base, "/", species_name, "/predictions/mean/",
-  #                         species_name, "_", year, "_mean.tif")
-  #     map_path <- paste0(out_base, "/", species_name, "/maps/",
-  #                        species_name, "_", year, "_map.pdf")
-  #     if (!file.exists(mean_path) || file.exists(map_path)) next
-  #     r_df <- as.data.frame(raster(mean_path), xy = TRUE)
-  #     colnames(r_df) <- c("x", "y", "prob")
-  #     r_df <- r_df[!is.na(r_df$prob), ]
-  #     p <- ggplot() +
-  #       geom_raster(data = r_df, aes(x = x, y = y, fill = prob)) +
-  #       scale_fill_gradientn(colours = prob_cols, limits = c(0,1), name = "Probability") +
-  #       geom_sf(data = kenya_sf, fill = NA, colour = "grey40", linewidth = 0.3) +
-  #       coord_sf(xlim = c(33.9,41.9), ylim = c(-4.7,5.0)) +
-  #       labs(title = paste0(gsub("_", ". ", species_name), " — ", year)) +
-  #       theme_minimal()
-  #     ggsave(map_path, p, width = 7, height = 6, dpi = map_dpi)
-  #     cat("  Map saved:", basename(map_path), "\n")
-  #   }
-  # }
+  
+  # ---- Response Curves (raw covariates) ----
+  rc_path <- paste0(out_base, "/", species_name, "/response_curves/response_curves.pdf")
+  if (savingPlots && !file.exists(rc_path) && length(valid_models) > 0) {
+
+    cat("\n── Response curves (all", length(valid_models), "models) ──\n")
+    cat("  Computing covariate ranges across all 100 dataframes...\n")
+
+    env_vals <- lapply(cov_cols, function(cov) {
+      vals <- unlist(lapply(train_sets, function(df) {
+        if (cov %in% names(df)) df[[cov]] else NULL
+      }))
+      vals <- vals[!is.na(vals) & is.finite(vals)]
+      if (length(vals) == 0) {
+        c(min = NA_real_, max = NA_real_, med = NA_real_)
+      } else {
+        c(min = min(vals, na.rm = TRUE),
+          max = max(vals, na.rm = TRUE),
+          med = median(vals, na.rm = TRUE))
+      }
+    })
+    names(env_vals) <- cov_cols
+
+    valid_covs <- cov_cols[sapply(cov_cols, function(cov) {
+      !is.na(env_vals[[cov]]["min"]) && !is.na(env_vals[[cov]]["max"]) &&
+        is.finite(env_vals[[cov]]["min"]) && is.finite(env_vals[[cov]]["max"]) &&
+        env_vals[[cov]]["min"] < env_vals[[cov]]["max"]
+    })]
+
+    if (length(valid_covs) == 0) {
+      cat("  No valid covariates for response curves. Skipping.\n")
+    } else {
+      cat("  Using", length(valid_covs), "covariates\n")
+
+      ri_list <- lapply(valid_models, function(model) {
+        tryCatch({
+          ri <- summary(model, plotit = FALSE)
+          setNames(ri$rel.inf, ri$var)
+        }, error = function(e) NULL)
+      })
+      ri_list <- Filter(Negate(is.null), ri_list)
+
+      ri_mean <- sapply(valid_covs, function(cov) {
+        vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
+        round(mean(vals, na.rm = TRUE), 1)
+      })
+      ri_min <- sapply(valid_covs, function(cov) {
+        vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
+        round(min(vals, na.rm = TRUE), 1)
+      })
+      ri_max <- sapply(valid_covs, function(cov) {
+        vals <- sapply(ri_list, function(ri) if (cov %in% names(ri)) ri[cov] else 0)
+        round(max(vals, na.rm = TRUE), 1)
+      })
+
+      minY <- 1; maxY <- 0
+      for (cov in valid_covs) {
+        val_range <- seq(env_vals[[cov]]["min"], env_vals[[cov]]["max"], length.out = 100)
+        df_rc <- as.data.frame(matrix(rep(env_vals[[cov]]["med"], 100),
+                                      nrow = 100, ncol = length(cov_cols), byrow = TRUE))
+        colnames(df_rc) <- cov_cols
+        df_rc[, cov] <- val_range
+        for (model in valid_models) {
+          tryCatch({
+            proj <- predict.gbm(model, df_rc, model$gbm.call$best.trees, type = "response")
+            if (min(proj, na.rm = TRUE) < minY) minY <- min(proj, na.rm = TRUE)
+            if (max(proj, na.rm = TRUE) > maxY) maxY <- max(proj, na.rm = TRUE)
+          }, error = function(e) {})
+        }
+      }
+      y_top <- maxY + ((maxY - minY) / 3)
+      cat("  Y-axis range:", round(minY, 3), "to", round(maxY, 3), "\n")
+
+      col_lines <- rgb(222, 67, 39, 30, maxColorValue = 255)
+      col_mean  <- rgb(180, 40, 20, 255, maxColorValue = 255)
+      col_range <- rgb(222, 67, 39, 40, maxColorValue = 255)
+
+      n_cols <- 5
+      n_rows <- ceiling(length(valid_covs) / n_cols)
+
+      pdf(rc_path, width = n_cols * 1.5, height = n_rows * 1.5)
+      par(mfrow = c(n_rows, n_cols), oma = c(0.5, 1.2, 0.8, 0.3),
+          mar = c(2.0, 0.8, 0.3, 0.3), lwd = 0.2, col = "gray30")
+
+      for (cov in valid_covs) {
+        val_range <- seq(env_vals[[cov]]["min"], env_vals[[cov]]["max"], length.out = 100)
+        df_rc <- as.data.frame(matrix(rep(env_vals[[cov]]["med"], 100),
+                                      nrow = 100, ncol = length(cov_cols), byrow = TRUE))
+        colnames(df_rc) <- cov_cols
+        df_rc[, cov] <- val_range
+
+        all_preds <- matrix(NA, nrow = 100, ncol = length(valid_models))
+        for (j in seq_along(valid_models)) {
+          tryCatch({
+            all_preds[, j] <- predict.gbm(valid_models[[j]], df_rc,
+                                          valid_models[[j]]$gbm.call$best.trees,
+                                          type = "response")
+          }, error = function(e) {})
+        }
+        all_preds <- all_preds[, colSums(!is.na(all_preds)) == 100, drop = FALSE]
+        if (ncol(all_preds) == 0) {
+          plot.new(); title(xlab = cov); box(); next
+        }
+        pred_mean <- rowMeans(all_preds, na.rm = TRUE)
+        pred_min  <- apply(all_preds, 1, min, na.rm = TRUE)
+        pred_max  <- apply(all_preds, 1, max, na.rm = TRUE)
+
+        plot(val_range, pred_mean, col = NA, ann = FALSE, axes = FALSE, type = "n",
+             xlim = c(env_vals[[cov]]["min"], env_vals[[cov]]["max"]),
+             ylim = c(minY, y_top))
+        polygon(c(val_range, rev(val_range)), c(pred_min, rev(pred_max)),
+                col = col_range, border = NA)
+        for (j in 1:ncol(all_preds)) lines(val_range, all_preds[, j], col = col_lines, lwd = 0.1)
+        lines(val_range, pred_mean, col = col_mean, lwd = 1.5)
+
+        axis(side = 1, lwd.tick = 0.2, cex.axis = 0.6, lwd = 0,
+             tck = -0.04, col.axis = "gray30", mgp = c(0, 0.12, 0))
+        axis(side = 2, lwd.tick = 0.2, cex.axis = 0.6, lwd = 0,
+             tck = -0.04, col.axis = "gray30", mgp = c(0, 0.25, 0),
+             at = seq(0, 1, 0.2))
+        title(xlab = cov, cex.lab = 0.7, mgp = c(1.0, 0, 0), col.lab = "gray30")
+        ri_val <- paste0(ri_mean[cov],"% [", ri_min[cov], "-", ri_max[cov], "]")
+        mtext(paste0("RI = ", ri_val), side = 3, line = -1.2, cex = 0.45, col = "gray30")
+        box(lwd = 0.3, col = "gray30")
+      }
+      dev.off()
+      cat("  ✓ Response curves saved\n")
+    }
+  }
+
+  # ---- Annual Predictions (raw rasters) ----
+  cat("\nGenerating annual predictions (raw covariates)...\n")
+  n_pred <- min(n_models_for_predictions, length(valid_models))
+  pred_models <- valid_models[1:n_pred]
+
+  static_rasters <- list()
+  for (cov in sp_covs$static) {
+    path <- paste0("covariates/static/", cov, ".tif")
+    if (file.exists(path)) {
+      r <- raster(path)
+      r <- resample(r, template_raster, method = "bilinear")
+      static_rasters[[cov]] <- r
+    } else {
+      cat("Warning: static raster missing:", path, "\n")
+    }
+  }
+
+  for (year in years) {
+    mean_path <- paste0(out_base, "/", species_name, "/predictions/mean/",
+                        species_name, "_", year, "_mean.tif")
+    if (file.exists(mean_path)) next
+    cat("  Year", year, "\n")
+
+    tv_rasters <- list()
+    for (cov in sp_covs$time_varying) {
+      path <- paste0(annual_output_base, "/", year, "/", cov, "_", year, ".tif")
+      if (file.exists(path)) {
+        r <- raster(path)
+        r <- resample(r, template_raster, method = "bilinear")
+        tv_rasters[[cov]] <- r
+      } else {
+        cat("    Missing:", path, "\n")
+      }
+    }
+    if (length(tv_rasters) != length(sp_covs$time_varying)) {
+      cat("    Missing some time‑varying rasters\n")
+      next
+    }
+
+    all_rasters <- c(static_rasters, tv_rasters)
+    stack_all <- stack(all_rasters)
+    names(stack_all) <- c(names(static_rasters), names(tv_rasters))
+
+    df_full <- as.data.frame(stack_all)
+    valid_idx_cells <- which(complete.cases(df_full))
+    if (length(valid_idx_cells) == 0) { cat("    No valid cells\n"); next }
+    df_valid <- df_full[valid_idx_cells, , drop = FALSE]
+
+    projections <- list()
+    for (j in 1:length(pred_models)) {
+      model <- pred_models[[j]]
+      model_vars <- model$gbm.call$gbm.x
+      avail <- intersect(model_vars, colnames(df_valid))
+      if (length(avail) == 0) next
+      pred <- tryCatch({
+        predict.gbm(model, df_valid[, avail, drop = FALSE],
+                    model$gbm.call$best.trees, type = "response")
+      }, error = function(e) NULL)
+      if (is.null(pred)) next
+      rast <- stack_all[[1]]
+      rast[] <- NA
+      rast[valid_idx_cells] <- pred
+      projections[[length(projections)+1]] <- rast
+    }
+
+    # >>> CHANGED: save mean, SD, and 95% CI rasters
+    if (length(projections) > 0) {
+      proj_stack <- stack(projections)
+      mean_proj <- calc(proj_stack, fun = mean, na.rm = TRUE)
+      writeRaster(mean_proj, mean_path, format = "GTiff", overwrite = TRUE,
+                  options = "COMPRESS=LZW")
+
+      if (length(projections) >= 2) {
+        # --- SD raster ---
+        sd_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
+                          species_name, "_", year, "_stdv.tif")
+        sd_proj <- calc(proj_stack, fun = sd, na.rm = TRUE)
+        writeRaster(sd_proj, sd_path, format = "GTiff", overwrite = TRUE,
+                    options = "COMPRESS=LZW")
+
+        # --- 95% CI rasters (2.5th and 97.5th percentiles) ---
+        ci_low_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
+                              species_name, "_", year, "_ci_low.tif")
+        ci_high_path <- paste0(out_base, "/", species_name, "/predictions/stdv/",
+                               species_name, "_", year, "_ci_high.tif")
+        ci_low_proj  <- calc(proj_stack, fun = function(x) quantile(x, 0.025, na.rm = TRUE))
+        ci_high_proj <- calc(proj_stack, fun = function(x) quantile(x, 0.975, na.rm = TRUE))
+        writeRaster(ci_low_proj,  ci_low_path,  format = "GTiff", overwrite = TRUE,
+                    options = "COMPRESS=LZW")
+        writeRaster(ci_high_proj, ci_high_path, format = "GTiff", overwrite = TRUE,
+                    options = "COMPRESS=LZW")
+      }
+      cat("    ✓ Saved mean, SD, and 95% CI rasters (", length(projections), "models)\n")
+    }
+  }
+
+  # ---- Maps ----
+  if (savingPlots) {
+    cat("\nGenerating maps...\n")
+    kenya_sf <- st_read(kenya_shapefile_path, quiet = TRUE)
+    kenya_sf <- st_transform(kenya_sf, crs = 4326)
+    prob_cols <- colorRampPalette(c("#FFFFCC", "#FFEDA0", "#FED976", "#FEB24C",
+                                    "#FD8D3C", "#FC4E2A", "#E31A1C", "#B10026"))(100)
+    for (year in map_years) {
+      mean_path <- paste0(out_base, "/", species_name, "/predictions/mean/",
+                          species_name, "_", year, "_mean.tif")
+      map_path <- paste0(out_base, "/", species_name, "/maps/",
+                         species_name, "_", year, "_map.pdf")
+      if (!file.exists(mean_path) || file.exists(map_path)) next
+      r_df <- as.data.frame(raster(mean_path), xy = TRUE)
+      colnames(r_df) <- c("x", "y", "prob")
+      r_df <- r_df[!is.na(r_df$prob), ]
+      p <- ggplot() +
+        geom_raster(data = r_df, aes(x = x, y = y, fill = prob)) +
+        scale_fill_gradientn(colours = prob_cols, limits = c(0,1), name = "Probability") +
+        geom_sf(data = kenya_sf, fill = NA, colour = "grey40", linewidth = 0.3) +
+        coord_sf(xlim = c(33.9,41.9), ylim = c(-4.7,5.0)) +
+        labs(title = paste0(gsub("_", ". ", species_name), " — ", year)) +
+        theme_minimal()
+      ggsave(map_path, p, width = 7, height = 6, dpi = map_dpi)
+      cat("  Map saved:", basename(map_path), "\n")
+    }
+  }
   
   # =========================================================================
   # Performance Summary (AUC, SI, Boyce only — with 95% CI)
@@ -1450,8 +1451,3 @@ if (!file.exists(holdout_rds)) {
 cat("\n╔════════════════════════════════════════════════════════════╗\n")
 cat("  PIPELINE COMPLETE (no standardisation)\n")
 cat("╚════════════════════════════════════════════════════════════╝\n")
-
-
-
-train_new <- readRDS("BRT_results/Ae_aegypti/models/BRT_models_SCV.rds")
-train_old <- readRDS("BRT_results/Ae_aegypti_5km_100models_with_buffer_bias_10covs_SCV_final_final_lr0.01_v2_(240926)/models/BRT_models_SCV.rds")
